@@ -119,31 +119,44 @@ function moveSnoozes() {
       dispatchDraft(draftsToSend[d]);
   }
   //SECOND THREADS TO UNSNOOZE
+  /// targeting specific date
+  var dateregex = new RegExp(dateLabel(new Date()));
+  GmailApp.getUserLabels().map(function(label) {
+    if (dateregex.test(label.getName())) {
+      var page = label.getThreads(0, 100);
+      moveThread(config, labels, 'unindexed', page, label);
+    }
+  });
+  /// targeting days
   for (var i = 1; i <= config.numDays; ++i) {
     page = null;
     // Get threads in 'pages' of 100 at a time
     while(!page || page.length == 100) {
       page = labels[i].getThreads(0, 100);
-      if (page.length > 0) {
-        if (i > 1) {
-          // Move the threads into 'today’s' label
-          labels[i - 1].addToThreads(page);
-        } else {
-          // Unless it’s time to unsnooze it
-          GmailApp.moveThreadsToInbox(page);
-          if (config.markUnread) {
-            GmailApp.markThreadsUnread(page);
-          }
-          if (config.addUnsnoozed) {
-            labels.Unsnoozed.addToThreads(page);
-          }          
-        }     
-        // Move the threads out of 'yesterday’s' label
-        labels[i].removeFromThreads(page);
-      }  
+      moveThread(config, labels, i, page, labels[i]);
     }
   }
 
+}
+
+function moveThread(config, labels, i, page, label) {
+  if (page.length > 0) {
+    if (i > 1) {
+      // Move the threads into 'today’s' label
+      labels[i - 1].addToThreads(page);
+    } else {
+      // Unless it’s time to unsnooze it
+      GmailApp.moveThreadsToInbox(page);
+      if (config.markUnread) {
+        GmailApp.markThreadsUnread(page);
+      }
+      if (config.addUnsnoozed) {
+        labels.Unsnoozed.addToThreads(page);
+      }
+    }
+    // Move the threads out of 'yesterday’s' label
+    label.removeFromThreads(page);
+  }
 }
 
 function dispatchDraft(message) {
