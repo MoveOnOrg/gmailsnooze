@@ -14,6 +14,7 @@
 // limitations under the License.
 
 // Author: Corey Goldfeder
+// Contributor: Schuyler Duveen
 -->
 
 <style>
@@ -46,7 +47,9 @@
     }).install({
       numDays: $('numDays').value, 
       markUnread: $('markUnread').checked, 
-      addUnsnoozed: $('addUnsnoozed').checked });
+      addUnsnoozed: $('addUnsnoozed').checked,
+      debugTime: $('debugTime').checked
+    });
   }
   function uninstall() {
     runner.withSuccessHandler(function() { 
@@ -54,6 +57,12 @@
       hide('update');
       hide('uninstall');
     }).uninstall();
+  }
+  function debuginfo() {
+    runner.withSuccessHandler(function(data) {
+      console.log(data);
+    }).getMatchingDrafts({
+    })
   }
 </script>
 <h2>Gmail Snooze</h2>
@@ -65,4 +74,11 @@ Add unsnoozed label when unsnoozing<br>
 <button onclick='install()' id ='install' class='<?= installed ? 'invisible' : '' ?>'>Install</button>
 <button onclick='install()' id ='update' class='<?= installed ? '' : 'invisible' ?>'>Update</button> 
 <button onclick='uninstall()' id='uninstall' class='<?= installed ? '' : 'invisible' ?>'>Uninstall</button>
-<br><br>[<a href="https://github.com/google/gmailsnooze">source code</a>]
+<br><br>
+[<a href="https://github.com/google/gmailsnooze">source code</a>]
+<br><br>
+Debugging: Make 1 day=1 minute
+<input type='checkbox' <?= debugTime ? 'checked' : '' ?> id='debugTime'>
+<ul id="debug" class='<?= debugTime ? '' : 'invisible' ?>'>
+  <li><button onclick='debuginfo()' id='debuginfo'>debuginfo</button></li>
+</ul>
