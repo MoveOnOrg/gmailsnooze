@@ -14,6 +14,7 @@
 // limitations under the License.
 
 // Author: Corey Goldfeder
+// Contributor: Schuyler Duveen
 -->
 
 <style>
@@ -46,7 +47,9 @@
     }).install({
       numDays: $('numDays').value, 
       markUnread: $('markUnread').checked, 
-      addUnsnoozed: $('addUnsnoozed').checked });
+      addUnsnoozed: $('addUnsnoozed').checked,
+      debugTime: $('debugTime').checked
+    });
   }
   function uninstall() {
     runner.withSuccessHandler(function() { 
@@ -54,6 +57,12 @@
       hide('update');
       hide('uninstall');
     }).uninstall();
+  }
+  function debuginfo() {
+    runner.withSuccessHandler(function(data) {
+      console.log(data);
+    }).getMatchingDrafts({
+    })
   }
 </script>
 <h2>Gmail Snooze</h2>
@@ -63,6 +72,25 @@ Mark unread when unsnoozing<br>
 <input type='checkbox' <?= addUnsnoozed ? 'checked' : '' ?> id='addUnsnoozed'>
 Add unsnoozed label when unsnoozing<br>
 <button onclick='install()' id ='install' class='<?= installed ? 'invisible' : '' ?>'>Install</button>
-<button onclick='install()' id ='update' class='<?= installed ? '' : 'invisible' ?>'>Update</button> 
+<button onclick='install()' id ='update' class='<?= installed ? '' : 'invisible' ?>'>Save</button> 
 <button onclick='uninstall()' id='uninstall' class='<?= installed ? '' : 'invisible' ?>'>Uninstall</button>
-<br><br>[<a href="https://github.com/google/gmailsnooze">source code</a>]
+
+<h3>Features</h3>
+
+<p>
+Label something as <code>Snooze/Snooze 1 days</code> and then it will be brought back to your inbox
+in 1 day (at 9am).
+<p>
+You can also snooze <b>Draft Messages</b> which will send on the right day.
+<p>
+If you tag any message with e.g. <code>snooze_20161231</code> (date format is <code>yyyymmdd</code>, do not skip zeros) then it will trigger (again, at 9am) on the date in question.
+
+<h3>Code</h3>
+<p>
+[<a href="https://github.com/MoveOnOrg/gmailsnooze">source code</a>]
+<p>
+Testing/Debugging: Make 1 day=1 minute
+<input type='checkbox' <?= debugTime ? 'checked' : '' ?> id='debugTime'>
+<div id="debug" class='<?= debugTime ? '' : 'invisible' ?>'>
+  <button onclick='debuginfo()' id='debuginfo'>debuginfo</button> (see console)
+</div>

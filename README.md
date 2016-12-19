@@ -70,8 +70,21 @@ at installation time. If you did a code installation you can also delete
 the project.
 
 
+USE
+---
+
+Label something as 'Snooze/Snooze 1 days' and then it will be brought back to your inbox
+in 1 day (at 9am).
+
+You can also snooze Drafts which will send on the right day.
+
+If you tag any Draft message with e.g. `snooze_20161231` (date format is yyyymmdd, do not skip zeros)
+then it will send (at 9am) on the date in question.
+
 AUTHOR
 ------
-Gmail Snooze was written by Corey Goldfeder at Google.
 
-This is not an official Google product (experimental or otherwise), it is just code that happens to be owned by Google.
+* Gmail Snooze was written by Corey Goldfeder at Google.
+  This is not an official Google product (experimental or otherwise), it is just code that happens to be owned by Google.
+
+* Contributor: Schuyler Duveen at MoveOn.org
