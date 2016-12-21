@@ -16,12 +16,21 @@
 // Contributor: Schuyler Duveen
 
 function getConfig() {
-  return JSON.parse(ScriptProperties.getProperty('config')) ||
+  var userProperties = PropertiesService.getUserProperties();
+  Logger.log(userProperties.getProperty('config'));
+  return JSON.parse(userProperties.getProperty('config')) ||
     { numDays: 7, markUnread: false, addUnsnoozed: false, debugTime: false };
 }
 
 function setConfig(config) {
-  ScriptProperties.setProperty('config', JSON.stringify(config));
+  var userProperties = PropertiesService.getUserProperties();
+  Logger.log('setConfig');
+  Logger.log(config);
+  userProperties.setProperty('config', JSON.stringify(config));
+  Logger.log(userProperties.getProperty('config'));
+
+  uninstall();
+  install(config);
 }
 
 function isInstalled() {
@@ -32,8 +41,13 @@ function install(config) {
   if (!isInstalled()) {
     if (config.debugTime) {
       ScriptApp.newTrigger('moveSnoozes').timeBased().everyMinutes(1).create();
+      //stop it from spamming Gmail api
+      ScriptApp.newTrigger('uninstall').timeBased()
+        .after(10 * 60 * 1000 //milliseconds
+              ).create();
     } else {
       ScriptApp.newTrigger('moveSnoozes').timeBased().atHour(9).nearMinute(0).everyDays(1).create();
+      ScriptApp.newTrigger('moveHourlySnoozes').timeBased().everyHours(1).nearMinute(10).create();
     }
   }
   createOrGetLabels(config);
@@ -43,6 +57,8 @@ function install(config) {
 function uninstall() {
   ScriptApp.getProjectTriggers().map(function(trigger) {
     ScriptApp.deleteTrigger(trigger);
+    //necessary for rate-limiting
+    Utilities.sleep(1000);
   });
 }
 
@@ -64,7 +80,8 @@ function createOrGetLabels(config) {
   };
   var labels = {
     Snooze: getLabel('Snooze'),
-    Unsnoozed: config.addUnsnoozed ? getLabel('Unsnoozed') : undefined,    
+    Unsnoozed: config.addUnsnoozed ? getLabel('Unsnoozed') : undefined,
+    Hourly: getLabel("Snooze/Snooze an hour or two"),
   };
   for (var i = 1; i <= config.numDays; ++i) {    
     labels[i] = getLabel('Snooze/Snooze ' + i + ' days');
@@ -82,7 +99,7 @@ function dateLabel(date) {
           ].join(''))
 }
 
-function getMatchingDrafts() {
+function getMatchingDrafts(targetLabel, sendImmediately, returnJSON, hourDelay) {
   var rv = {"drafts":[], "labels":[]};
   var config = getConfig();
   var labels = createOrGetLabels(config);
@@ -95,17 +112,47 @@ function getMatchingDrafts() {
     for (var j = 0; j < msglabels.length; j++) {
       var labelName = msglabels[j].getName();
       rv.labels.push(labelName);
-      if (dateregex.test(labelName)
-          || labelName == labels[1].getName()) {
+      if (targetLabel) {
+        if (labelName == targetLabel) {
+          shouldSend = true;
+          break;
+        }
+      } else if (dateregex.test(labelName)
+                 || labelName == labels[1].getName()) {
+        //default logic if no targetLabel is specified
         shouldSend = true;
         break;
       }
     }
     if (shouldSend) {
-      rv.drafts.push(msg);
+      if (!hourDelay //note: draft getDate() returns last modified date
+          || (new Date(msg.getDate()) < (new Date() - (60 * 60 * 1000)))) {
+        if (sendImmediately) {
+          dispatchDraft(msg, true);
+        } else {
+          rv.drafts.push(msg);
+        }
+      }
     }
   }
-  return rv;
+  if (returnJSON) {
+    for (var k=0; k<rv.drafts.length; k++) {
+      var d = rv.drafts[k];
+      rv.drafts[k] = {to: msg.getTo(), date: msg.getDate(), subject: msg.getSubject()}
+    }
+    return JSON.stringify(rv);
+  } else {
+    return rv;
+  }
+}
+
+function moveHourlySnoozes() {
+  var config = getConfig();
+  var labels = createOrGetLabels(config);
+  getMatchingDrafts(labels.Hourly.getName(), true, false, true);
+
+  var page = labels.Hourly.getThreads(0, 100);
+  moveThread(config, labels, 'unindexed', page, label);
 }
 
 function moveSnoozes() { 
@@ -159,8 +206,9 @@ function moveThread(config, labels, i, page, label) {
   }
 }
 
-function dispatchDraft(message) {
+function dispatchDraft(message, attachToThread) {
   try {
+      var thread = message.getThread();
       var body = message.getBody();
       var raw  = message.getRawContent();
       /* Credit - YetAnotherMailMerge */
@@ -205,7 +253,13 @@ function dispatchDraft(message) {
         name        : message.getFrom().match(/[^<]*/)[0].trim(),
         attachments : message.getAttachments()
       }
-      GmailApp.sendEmail(message.getTo(), message.getSubject(), body, options);
+
+      // Unintuitive, but replyAll even works on orphan/original messages, and
+      // for threads, it keeps it in the thread
+      message.replyAll(body, options)
+      //old way:
+      //GmailApp.sendEmail(message.getTo(), message.getSubject(), body, options);
+
       message.moveToTrash();
       return "Delivered";
   } catch (e) {

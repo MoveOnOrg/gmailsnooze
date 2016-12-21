@@ -22,12 +22,18 @@
   h2 { color:#4d90fe; font-weight:bold }
   button { 
     color:white;
-    background:#4d90fe;
+    background-color: hsl(217,99%,65%);
     border:solid #3079ed 1px;
     border-radius:4px;
     font-size:13pt;
     padding:5px;
     font-weight:bold
+  }
+  button:hover {
+    background-color: hsl(217,99%,70%);
+  }
+  button:active {
+    background-color: hsl(217,30%,70%);
   }
   .invisible { display:none }
 </style>
@@ -37,6 +43,7 @@
   function hide(id) {$(id).className = 'invisible'; }
   var runner = google.script.run
     .withFailureHandler(function(error, message) {
+      console.log(error, message);
       alert('Error while ' + message + ': ' + error.message);
     });    
   function install() {
@@ -61,8 +68,12 @@
   function debuginfo() {
     runner.withSuccessHandler(function(data) {
       console.log(data);
-    }).getMatchingDrafts({
-    })
+    }).getMatchingDrafts(false, false, true)
+  }
+  function debugSend() {
+    runner.withSuccessHandler(function(data) {
+      console.log(data);
+    }).getMatchingDrafts("snooze_test", true)
   }
 </script>
 <h2>Gmail Snooze</h2>
@@ -93,4 +104,6 @@ Testing/Debugging: Make 1 day=1 minute
 <input type='checkbox' <?= debugTime ? 'checked' : '' ?> id='debugTime'>
 <div id="debug" class='<?= debugTime ? '' : 'invisible' ?>'>
   <button onclick='debuginfo()' id='debuginfo'>debuginfo</button> (see console)
+  <br>
+  <button onclick='debugSend()' id='debugtest'>debug send label 'snooze_test'</button>
 </div>
