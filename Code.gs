@@ -152,7 +152,7 @@ function moveHourlySnoozes() {
   getMatchingDrafts(labels.Hourly.getName(), true, false, true);
 
   var page = labels.Hourly.getThreads(0, 100);
-  moveThread(config, labels, 'unindexed', page, label);
+  moveThread(config, labels, 'unindexed', page, labels.Hourly);
 }
 
 function moveSnoozes() { 
