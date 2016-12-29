@@ -17,9 +17,17 @@
 
 function getConfig() {
   var userProperties = PropertiesService.getUserProperties();
-  Logger.log(userProperties.getProperty('config'));
-  return JSON.parse(userProperties.getProperty('config')) ||
-    { numDays: 7, markUnread: false, addUnsnoozed: false, debugTime: false };
+  var cfg = userProperties.getProperty('config');
+  Logger.log(cfg);
+  if (cfg) {
+    return JSON.parse(cfg);
+  } else {
+    return { numDays: 7,
+             markUnread: false,
+             addUnsnoozed: false,
+             calendarNotificationsToGuests: false,
+             debugTime: false };
+  }
 }
 
 function setConfig(config) {
@@ -48,6 +56,9 @@ function install(config) {
     } else {
       ScriptApp.newTrigger('moveSnoozes').timeBased().atHour(9).nearMinute(0).everyDays(1).create();
       ScriptApp.newTrigger('moveHourlySnoozes').timeBased().everyHours(1).nearMinute(10).create();
+    }
+    if (config.calendarNotificationsToGuests) {
+      ScriptApp.newTrigger('emailMatchingCalendarEvents').timeBased().everyMinutes(30).create();
     }
   }
   createOrGetLabels(config);
@@ -97,6 +108,39 @@ function dateLabel(date) {
            (10 > date.getDate() ? '0': ''),
            date.getDate()
           ].join(''))
+}
+
+function emailMatchingCalendarEvents() {
+  // every 30min from 8-6, check to see if there's an event
+  // 1. test for more guests (than just the author)
+  // 2. test for (personal) email reminder set
+  var DURATION_WINDOW = 30 * 60 * 1000; //30min
+  var now = new Date();
+  var hour = new Date(now.getTime() + DURATION_WINDOW);
+  var events = CalendarApp.getEvents(now, hour, {author: Session.getActiveUser().getEmail()});
+  for (var i=0; i<events.length; i++) {
+    var evt = events[i];
+    if (evt.getEmailReminders().length >= 1) {
+      var guests = evt.getGuestList();
+      if (guests.length >= 1) {
+        var guestEmails = guests.map(function(g){
+          if (g.getGuestStatus() != CalendarApp.GuestStatus.NO) {
+            return g.getEmail();
+          }
+        }).filter(function(e){return e;});
+        GmailApp.sendEmail(guestEmails.join(','),
+                           "Event Reminder: " + evt.getTitle(),
+                           ("Location: " + evt.getLocation()
+                            + "\n\nDescription: " + evt.getDescription()
+                            + "\n\n\n(sent with a GoogleAppScript: "
+                            + ScriptApp.getService().getUrl()
+                            + ")\n"
+                           )
+                          );
+      }
+    }
+  }
+
 }
 
 function getMatchingDrafts(targetLabel, sendImmediately, returnJSON, hourDelay) {
