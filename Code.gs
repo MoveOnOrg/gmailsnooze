@@ -48,20 +48,26 @@ function isInstalled() {
 function install(config) {
   uninstall();
   if (!isInstalled()) {
+    var userProperties = PropertiesService.getUserProperties();
+    var triggers = [];
     Logger.log('installing triggers ,' + new Date());
     if (config.debugTime) {
-      ScriptApp.newTrigger('moveSnoozes').timeBased().everyMinutes(1).create();
+      triggers.push(ScriptApp.newTrigger('moveSnoozes').timeBased().everyMinutes(1).create());
       //stop it from spamming Gmail api
-      ScriptApp.newTrigger('uninstall').timeBased()
-        .after(10 * 60 * 1000 //milliseconds
-              ).create();
+      triggers.push(ScriptApp.newTrigger('uninstall').timeBased()
+                    .after(10 * 60 * 1000 //milliseconds
+                          ).create());
     } else {
-      ScriptApp.newTrigger('moveSnoozes').timeBased().atHour(9).nearMinute(0).everyDays(1).create();
-      ScriptApp.newTrigger('moveHourlySnoozes').timeBased().everyHours(1).nearMinute(10).create();
+      triggers.push(ScriptApp.newTrigger('moveSnoozes').timeBased().atHour(9).nearMinute(0).everyDays(1).create());
+      triggers.push(ScriptApp.newTrigger('moveHourlySnoozes').timeBased().everyHours(1).nearMinute(10).create());
     }
     if (config.calendarNotificationsToGuests) {
       Utilities.sleep(1000);
-      ScriptApp.newTrigger('emailMatchingCalendarEvents').timeBased().everyMinutes(30).create();
+      triggers.push(ScriptApp.newTrigger('emailMatchingCalendarEvents').timeBased().everyMinutes(30).create());
+    }
+    if (triggers.length) {
+      var triggerIds = triggers.map(function(t) {return t.getUniqueId()});
+      userProperties.setProperty('triggers', JSON.stringify(triggerIds));
     }
     Logger.log('installing triggers FINISHED ,' + new Date());
   }
@@ -70,11 +76,17 @@ function install(config) {
 }
 
 function uninstall() {
+  var userProperties = PropertiesService.getUserProperties();
+  var triggerIds = JSON.parse(userProperties.getProperty('triggers') || '[]');
   ScriptApp.getProjectTriggers().map(function(trigger) {
-    ScriptApp.deleteTrigger(trigger);
-    //necessary for rate-limiting
-    Utilities.sleep(1000);
+    //OMG! this is ALL the triggers for the script (for all users) -- need to restrict
+    if (triggerIds.indexOf(trigger.getUniqueId()) != -1) {
+      ScriptApp.deleteTrigger(trigger);
+      //necessary for rate-limiting
+      Utilities.sleep(1000);
+    }
   });
+  userProperties.setProperty('triggers', '[]');
 }
 
 function doGet() {
