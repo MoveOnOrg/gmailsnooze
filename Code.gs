@@ -17,20 +17,28 @@
 
 function getConfig() {
   var userProperties = PropertiesService.getUserProperties();
-  Logger.log(userProperties.getProperty('config'));
-  return JSON.parse(userProperties.getProperty('config')) ||
-    { numDays: 7, markUnread: false, addUnsnoozed: false, debugTime: false };
+  var defaults = { numDays: 7,
+                   markUnread: false,
+                   addUnsnoozed: false,
+                   calendarNotificationsToGuests: false,
+                   debugTime: false };
+  var userConfig = userProperties.getProperty('config');
+  Logger.log(userConfig);
+  var cfg = JSON.parse(userConfig || '{}');
+  for (var a in defaults) {
+    if (typeof cfg[a] == 'undefined') {
+      cfg[a] = defaults[a];
+    }
+  }
+  return cfg;
 }
 
 function setConfig(config) {
   var userProperties = PropertiesService.getUserProperties();
-  Logger.log('setConfig');
+  Logger.log('setConfig ' + new Date());
   Logger.log(config);
   userProperties.setProperty('config', JSON.stringify(config));
   Logger.log(userProperties.getProperty('config'));
-
-  uninstall();
-  install(config);
 }
 
 function isInstalled() {
@@ -38,28 +46,47 @@ function isInstalled() {
 }
 
 function install(config) {
+  uninstall();
   if (!isInstalled()) {
+    var userProperties = PropertiesService.getUserProperties();
+    var triggers = [];
+    Logger.log('installing triggers ,' + new Date());
     if (config.debugTime) {
-      ScriptApp.newTrigger('moveSnoozes').timeBased().everyMinutes(1).create();
+      triggers.push(ScriptApp.newTrigger('moveSnoozes').timeBased().everyMinutes(1).create());
       //stop it from spamming Gmail api
-      ScriptApp.newTrigger('uninstall').timeBased()
-        .after(10 * 60 * 1000 //milliseconds
-              ).create();
+      triggers.push(ScriptApp.newTrigger('uninstall').timeBased()
+                    .after(10 * 60 * 1000 //milliseconds
+                          ).create());
     } else {
-      ScriptApp.newTrigger('moveSnoozes').timeBased().atHour(9).nearMinute(0).everyDays(1).create();
-      ScriptApp.newTrigger('moveHourlySnoozes').timeBased().everyHours(1).nearMinute(10).create();
+      triggers.push(ScriptApp.newTrigger('moveSnoozes').timeBased().atHour(9).nearMinute(0).everyDays(1).create());
+      triggers.push(ScriptApp.newTrigger('moveHourlySnoozes').timeBased().everyHours(1).nearMinute(10).create());
     }
+    if (config.calendarNotificationsToGuests) {
+      Utilities.sleep(1000);
+      triggers.push(ScriptApp.newTrigger('emailMatchingCalendarEvents').timeBased().everyMinutes(30).create());
+    }
+    if (triggers.length) {
+      var triggerIds = triggers.map(function(t) {return t.getUniqueId()});
+      userProperties.setProperty('triggers', JSON.stringify(triggerIds));
+    }
+    Logger.log('installing triggers FINISHED ,' + new Date());
   }
   createOrGetLabels(config);
   setConfig(config);
 }
 
 function uninstall() {
+  var userProperties = PropertiesService.getUserProperties();
+  var triggerIds = JSON.parse(userProperties.getProperty('triggers') || '[]');
   ScriptApp.getProjectTriggers().map(function(trigger) {
-    ScriptApp.deleteTrigger(trigger);
-    //necessary for rate-limiting
-    Utilities.sleep(1000);
+    //OMG! this is ALL the triggers for the script (for all users) -- need to restrict
+    if (triggerIds.indexOf(trigger.getUniqueId()) != -1) {
+      ScriptApp.deleteTrigger(trigger);
+      //necessary for rate-limiting
+      Utilities.sleep(1000);
+    }
   });
+  userProperties.setProperty('triggers', '[]');
 }
 
 function doGet() {
@@ -97,6 +124,48 @@ function dateLabel(date) {
            (10 > date.getDate() ? '0': ''),
            date.getDate()
           ].join(''))
+}
+
+function emailMatchingCalendarEvents() {
+  // every 30min from 8-6, check to see if there's an event
+  // 1. test for more guests (than just the author)
+  // 2. test for (personal) email reminder set
+  var DURATION_WINDOW = 35 * 60 * 1000; //35min (a little overlap to allow for trigger imprecision)
+  var now = new Date();
+  var hour = new Date(now.getTime() + DURATION_WINDOW);
+  var events = CalendarApp.getEvents(now, hour, {author: Session.getActiveUser().getEmail()});
+  Logger.log("emailMatchingCalendarEvents  total events in window: " + events.length);
+  for (var i=0; i<events.length; i++) {
+    var evt = events[i];
+    var title = evt.getTitle();
+    Logger.log("emailMatchingCalendarEvents  testing event: " + title);
+    if (evt.getEmailReminders().length >= 1
+        && !evt.getTag('gmailsnoozereminded')
+       ) {
+      var guests = evt.getGuestList();
+      if (guests.length >= 1) {
+        var guestEmails = guests.map(function(g){
+          if (g.getGuestStatus() != CalendarApp.GuestStatus.NO) {
+            return g.getEmail();
+          }
+        }).filter(function(e){return e;});
+        if (guestEmails.length) {
+          Logger.log("emailMatchingCalendarEvents  sending email subject: " + title + '; TO: ' + guestEmails.join(','));
+          GmailApp.sendEmail(guestEmails.join(','),
+                             "Event Reminder: " + title,
+                             ("Location: " + evt.getLocation()
+                              + "\n\nDescription: " + evt.getDescription()
+                              + "\n\n\n(sent with a GoogleAppScript: "
+                              + ScriptApp.getService().getUrl()
+                              + ")\n"
+                             )
+                            );
+        }
+        evt.setTag('gmailsnoozereminded', 'true'); //avoids dupe sends
+      }
+    }
+  }
+
 }
 
 function getMatchingDrafts(targetLabel, sendImmediately, returnJSON, hourDelay) {
@@ -156,6 +225,7 @@ function moveHourlySnoozes() {
 }
 
 function moveSnoozes() { 
+  Logger.log('move snoozes started ', new Date());
   var config = getConfig();
   var labels = createOrGetLabels(config);
   var oldLabel, newLabel, page;
