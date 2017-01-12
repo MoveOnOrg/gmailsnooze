@@ -15,13 +15,19 @@
 // Author: Corey Goldfeder
 // Contributor: Schuyler Duveen
 
+var HOURLY_LABEL = "Snooze/Snooze an hour or two";
+
 function getConfig() {
   var userProperties = PropertiesService.getUserProperties();
   var defaults = { numDays: 7,
                    markUnread: false,
                    addUnsnoozed: false,
                    calendarNotificationsToGuests: false,
-                   debugTime: false };
+                   calendarNotificationPrefix: 'Event Reminder: ',
+                   debugTime: false,
+                   userTimezone: 'America/New_York',
+                   userTimezoneOffset: 0
+                 };
   var userConfig = userProperties.getProperty('config');
   Logger.log(userConfig);
   var cfg = JSON.parse(userConfig || '{}');
@@ -30,11 +36,13 @@ function getConfig() {
       cfg[a] = defaults[a];
     }
   }
+  cfg.timezone = Session.getScriptTimeZone();
   return cfg;
 }
 
 function setConfig(config) {
   var userProperties = PropertiesService.getUserProperties();
+  config.userTimezone = CalendarApp.getDefaultCalendar().getTimeZone();
   Logger.log('setConfig ' + new Date());
   Logger.log(config);
   userProperties.setProperty('config', JSON.stringify(config));
@@ -59,7 +67,7 @@ function install(config) {
                           ).create());
     } else {
       triggers.push(ScriptApp.newTrigger('moveSnoozes').timeBased().atHour(9).nearMinute(0).everyDays(1).create());
-      triggers.push(ScriptApp.newTrigger('moveHourlySnoozes').timeBased().everyHours(1).nearMinute(10).create());
+      triggers.push(ScriptApp.newTrigger('moveHourlySnoozes').timeBased().everyMinutes(30).create());
     }
     if (config.calendarNotificationsToGuests) {
       Utilities.sleep(1000);
@@ -108,7 +116,7 @@ function createOrGetLabels(config) {
   var labels = {
     Snooze: getLabel('Snooze'),
     Unsnoozed: config.addUnsnoozed ? getLabel('Unsnoozed') : undefined,
-    Hourly: getLabel("Snooze/Snooze an hour or two"),
+    Hourly: getLabel(HOURLY_LABEL),
   };
   for (var i = 1; i <= config.numDays; ++i) {    
     labels[i] = getLabel('Snooze/Snooze ' + i + ' days');
@@ -130,6 +138,7 @@ function emailMatchingCalendarEvents() {
   // every 30min from 8-6, check to see if there's an event
   // 1. test for more guests (than just the author)
   // 2. test for (personal) email reminder set
+  var config = getConfig();
   var DURATION_WINDOW = 35 * 60 * 1000; //35min (a little overlap to allow for trigger imprecision)
   var now = new Date();
   var hour = new Date(now.getTime() + DURATION_WINDOW);
@@ -151,13 +160,14 @@ function emailMatchingCalendarEvents() {
         }).filter(function(e){return e;});
         if (guestEmails.length) {
           Logger.log("emailMatchingCalendarEvents  sending email subject: " + title + '; TO: ' + guestEmails.join(','));
+          var loc = evt.getLocation();
           GmailApp.sendEmail(guestEmails.join(','),
-                             "Event Reminder: " + title,
-                             ("Location: " + evt.getLocation()
-                              + "\n\nDescription: " + evt.getDescription()
-                              + "\n\n\n(sent with a GoogleAppScript: "
-                              + ScriptApp.getService().getUrl()
-                              + ")\n"
+                             config.calendarNotificationPrefix + title,
+                             ((loc ? "Location: " + loc + "\n\n" : '')
+                              + evt.getDescription()
+                              ///+ "\n\n\n(sent with a GoogleAppScript: "
+                              ///+ ScriptApp.getService().getUrl()
+                              ///+ ")\n"
                              )
                             );
         }
@@ -165,10 +175,10 @@ function emailMatchingCalendarEvents() {
       }
     }
   }
-
 }
 
-function getMatchingDrafts(targetLabel, sendImmediately, returnJSON, hourDelay) {
+function getMatchingDrafts(targetLabel, sendImmediately, returnJSON, hourlyMode) {
+  Logger.log('running getMatchingDrafts: ' + targetLabel);
   var rv = {"drafts":[], "labels":[]};
   var config = getConfig();
   var labels = createOrGetLabels(config);
@@ -181,21 +191,39 @@ function getMatchingDrafts(targetLabel, sendImmediately, returnJSON, hourDelay) 
     for (var j = 0; j < msglabels.length; j++) {
       var labelName = msglabels[j].getName();
       rv.labels.push(labelName);
+      var isDateLabel = /\d{8}/.test(labelName);
       if (targetLabel) {
         if (labelName == targetLabel) {
           shouldSend = true;
           break;
+        } else if (hourlyMode && /[tT]\d+/.test(labelName)) {
+          //should not have an 8-digit date in label OR should be datelabel for today
+          Logger.log('matched hourly label: ' + labelName);
+          if (!isDateLabel || dateregex.test(labelName)) {
+            var curDate = new Date();
+            var scriptTZOffset = curDate.getTimezoneOffset();
+            //adjust to user's perspective of time
+            var msTZoffset = ((scriptTZOffset - config.userTimezoneOffset) * 60 * 1000);
+            curDate = new Date(Number(curDate) + Number(msTZoffset));
+            Logger.log('hourly test: ' + curDate.getHours());
+            if (curDate.getHours() >= Number(labelName.match(/[tT]([012]?\d)/)[1])) {
+              shouldSend = 2;
+              break;
+            }
+          }
         }
-      } else if (dateregex.test(labelName)
+      } else if ((dateregex.test(labelName)
+                  && !/[tT]\d+/.test(labelName))
                  || labelName == labels[1].getName()) {
-        //default logic if no targetLabel is specified
         shouldSend = true;
         break;
       }
     }
     if (shouldSend) {
-      if (!hourDelay //note: draft getDate() returns last modified date
-          || (new Date(msg.getDate()) < (new Date() - (60 * 60 * 1000)))) {
+      if (!hourlyMode //note: draft getDate() returns last modified date
+          || (new Date(msg.getDate()) < (new Date() - (60 * 60 * 1000)))
+          || shouldSend == 2
+         ) {
         if (sendImmediately) {
           dispatchDraft(msg, true);
         } else {
