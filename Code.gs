@@ -61,6 +61,7 @@ function install(config) {
     Logger.log('installing triggers ,' + new Date());
     if (config.debugTime) {
       triggers.push(ScriptApp.newTrigger('moveSnoozes').timeBased().everyMinutes(1).create());
+      triggers.push(ScriptApp.newTrigger('moveHourlySnoozes').timeBased().everyMinutes(30).create());
       //stop it from spamming Gmail api
       triggers.push(ScriptApp.newTrigger('uninstall').timeBased()
                     .after(10 * 60 * 1000 //milliseconds
@@ -102,6 +103,12 @@ function doGet() {
   var config = getConfig();
   for (var key in config) t[key] = config[key];
   t.installed = isInstalled();
+  var email = Session.getActiveUser().getEmail();
+  t.logo = '';
+  if (email) {
+    var domain = email.split('@')[1];
+    t.logo = 'https://www.google.com/a/'+domain+'/images/logo.gif?alpha=1&service=google_default';
+  }
   return t.evaluate().setSandboxMode(HtmlService.SandboxMode.NATIVE);
 }
 

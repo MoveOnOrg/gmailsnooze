@@ -16,9 +16,17 @@
 // Author: Corey Goldfeder
 // Contributor: Schuyler Duveen
 -->
+<title>Gmail Snooze*</title>
 <style>
-  body { padding:10px }
-  h2 { color:#4d90fe; font-weight:bold }
+  body {padding:0px; margin:0px;}
+  #main { padding: 10px }
+  header {
+    background-color: #F1F1F1;
+    height: 60px;
+    width: 100%;
+  }
+  img#logo {float:left;padding:0 30px}
+  h2 { color:#4285f4; font-weight:bold; margin: 0 10px; padding:15px 10px 10px 240px }
   button { 
     color:white;
     background-color: hsl(217,99%,65%);
@@ -80,9 +88,18 @@
       console.log(data);
     }).moveHourlySnoozes();
   }
+
 </script>
+<header>
+<img id="logo" src="<?= logo ?>" />
 <h2>Gmail Snooze</h2>
-Maintain <input id='numDays' value='<?= numDays ?>'> days of snooze labels <br>
+</header>
+<div id="main">
+<p>
+Gmail Snooze is a tool using gmail Labels for adding a timer to send delayed email or 'wake up' a thread (i.e. appear in your Inbox again).
+</p>
+<h3>Configuration</h3>
+Maintain <input id='numDays' value='<?= numDays ?>'> days of snooze labels (you don't need too many of these, we also have a feature that wakes up on a particular date)<br>
 <input type='checkbox' <?= markUnread ? 'checked' : '' ?> id='markUnread'>
 Mark unread when unsnoozing<br>
 <input type='checkbox' <?= addUnsnoozed ? 'checked' : '' ?> id='addUnsnoozed'>
@@ -99,28 +116,33 @@ Calendar Reminder Subject Prefix:
 
 <ul>
   <li>
-    Label something as <code>Snooze/Snooze 1 days</code> and then it will be brought back to your inbox
+    <b>Basic use:</b> Label something as e.g. <code>Snooze/Snooze 1 days</code> and then it will be brought back to your inbox
     in 1 day (at 9am Timezone:<?= timezone ?>).
   <li>
-    You can also snooze <b>Draft Messages</b> which will send on the right day.
-  <li>
-    If you tag any message with e.g. <code>snooze_20161231</code> (date format is <code>yyyymmdd</code>, do not skip zeros) then it will trigger (again, at 9am) on the date in question.
-  <li>Hourly sending:
+    <b>To deslay sending message:</b> add a Label to your <i>Draft Messages</i> and it will send at the date/time to the label.
     <ul>
-      <li>Any label that has the text <code>T{military time hour}</code>
-        will be sent around that hour (~15min after or so) in your timezone (<span id="myTZ"></span>).
-        So e.g. a label of <code>snooze_T14</code> will trigger at 2pm your time.
-        (lower-case 't' is ok, too, so <code>snooze_t14</code> also works).
-        This also works with dates, so you can do <code>snooze_20170120_T10</code> to send at 10am on 01/20/2017.
-        <script>
-          var tzDiv = $('myTZ');
-          tzDiv.innerHTML = String(new Date()).match(/GMT.*/)[0];
-        </script>
-      <li>There is also an hourly-ish label called <code>Snooze/Snooze an hour or two</code>, where if you drop
-        it in that folder it will send sometime betwen one and two hours.  This is useful for 'after the meeting'
-        kinds of use-cases.
+      <lh><b>Adding a label to a draft message:</b></lh>
+      <li>On the compose box, note the little down arrow to the right of the trash can icon in the bottom right</li>
+      <li>Click the down arrow, and choose Label, and then either navigate to one of the standard Snooze/ labels or create a new one (for specific dates and times)</li>
+      <li>Make sure NOT to click Send, and also note that if you minimize the message, it will also not be saved</li>
+      <li>When ready, click the 'X' in the upper-right to save your draft message with the label you added, for Gmail Snooze to be able to wake it up.</li>
     </ul>
-  <li>
+  <li><b>Label types:</b> There are several types of labels that will determine how it is snoozed
+    <ul>
+      <li><b>Postpone by X days:</b> Label it with one of the pre-created <code>Snooze/Snooze <i>X</i> days</code>.</li>
+      <li><b>Postpone by an hour or two:</b> Label it with the pre-created <code>Snooze/Snooze an hour or two</code>. This is useful for 'after the meeting'
+        kinds of use-cases.</li>
+      <li><b>Targeting a specific date:</b> Label any message with e.g. <code>snooze_20161231</code>
+          (date format is <code>yyyymmdd</code>, do not skip zeros). It can be inside another label (like Snooze) and still work.</li>
+      <li><b>Target to a specific hour:</b> Use a Label with the text <code>T{military time hour}</code>
+        which will then be sent around that hour (~15min after or so) in your timezone (<?= userTimezone ?>).
+        So e.g. a label of <code>snooze_T14</code> (or <code>Snooze/snooze_T14</code>)will trigger at 2pm your time.
+        (lower-case 't' is ok, too, so <code>snooze_t14</code> also works)
+        This also works with dates, so you can do <code>snooze_20170120_T10</code> to send at 10am on 01/20/2017.
+        </li>
+    </ul>
+  </li>
+<li>Reminding Calendar event attendees before hand:<br>
     If you have enabled Calendar Reminders, then all events that:
     <br />
     1. Have guests that have not marked NO in attendance
@@ -128,13 +150,12 @@ Calendar Reminder Subject Prefix:
     2. That you added an '<b>Email Notification</b>' (the Calendar notification annoyingly just goes to yourself)
     <br />
     Then this script will send an email with the event title as subject line, and include the Location and Description of the event in the body (hint: if you want to send new details in the reminder, just modify the description, but don't send an update).
-  <li>Your Timezone is: <?= userTimezone ?>
 </ul>
 <h3>Code</h3>
 <p>
 [<a href="https://github.com/MoveOnOrg/gmailsnooze" target="_blank">source code</a>]
 <p>
-Testing/Debugging: Make 1 day=1 minute
+Testing/Debugging: Make 1 day=1 minute<br>
 <input type='checkbox' <?= debugTime ? 'checked' : '' ?> id='debugTime'>
 <div id="debug" class='<?= debugTime ? '' : 'invisible' ?>'>
   <button onclick='debuginfo()' id='debuginfo'>debuginfo</button> (see console)
@@ -142,4 +163,5 @@ Testing/Debugging: Make 1 day=1 minute
   <button onclick='debugSend()' id='debugtest'>debug send label 'snooze_test'</button>
   <br>
   <button onclick='runHourly()' id='runhourly'>run Hourly Trigger Now</button>
+</div>
 </div>
