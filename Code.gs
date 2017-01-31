@@ -141,6 +141,28 @@ function dateLabel(date) {
           ].join(''))
 }
 
+function dateLabelDetails(labelName, date, tzOffset) {
+  date = date || new Date();
+  var dateregex = new RegExp(dateLabel(date));
+  var timeregex = /[tT]([012]?\d)/;
+  var rv = {
+    'dateLabel': /\d{8}/.test(labelName),
+    'isDate': dateregex.test(labelName),
+    'timeLabel': timeregex.test(labelName)
+  };
+  if (rv.isDate && rv.timeLabel) {
+    rv.hour = Number(labelName.match(timeregex)[1]);
+    if (tzOffset) {
+      var scriptTZOffset = date.getTimezoneOffset();
+      //adjust to user's perspective of time
+      var msTZoffset = ((scriptTZOffset - tzOffset) * 60 * 1000);
+      var adjustedDate = new Date(Number(curDate) + Number(msTZoffset));
+      rv.isTime = (adjustedDate.getHours() >= rv.hour);
+    }
+  }
+  return rv;
+}
+
 function emailMatchingCalendarEvents() {
   // every 30min from 8-6, check to see if there's an event
   // 1. test for more guests (than just the author)
@@ -190,7 +212,6 @@ function getMatchingDrafts(targetLabel, sendImmediately, returnJSON, hourlyMode)
   var config = getConfig();
   var labels = createOrGetLabels(config);
   var drafts = GmailApp.getDraftMessages();
-  var dateregex = new RegExp(dateLabel(new Date()));
   for (var i = 0; i < drafts.length; i++) {
     var msg = drafts[i];
     var msglabels = msg.getThread().getLabels();
@@ -198,7 +219,8 @@ function getMatchingDrafts(targetLabel, sendImmediately, returnJSON, hourlyMode)
     for (var j = 0; j < msglabels.length; j++) {
       var labelName = msglabels[j].getName();
       rv.labels.push(labelName);
-      var isDateLabel = /\d{8}/.test(labelName);
+      var dateDetails = dateLabelDetails(labelName,
+                                         new Date(), config.userTimezoneOffset);
       if (targetLabel) {
         if (labelName == targetLabel) {
           shouldSend = true;
@@ -206,21 +228,14 @@ function getMatchingDrafts(targetLabel, sendImmediately, returnJSON, hourlyMode)
         } else if (hourlyMode && /[tT]\d+/.test(labelName)) {
           //should not have an 8-digit date in label OR should be datelabel for today
           Logger.log('matched hourly label: ' + labelName);
-          if (!isDateLabel || dateregex.test(labelName)) {
-            var curDate = new Date();
-            var scriptTZOffset = curDate.getTimezoneOffset();
-            //adjust to user's perspective of time
-            var msTZoffset = ((scriptTZOffset - config.userTimezoneOffset) * 60 * 1000);
-            curDate = new Date(Number(curDate) + Number(msTZoffset));
-            Logger.log('hourly test: ' + curDate.getHours());
-            if (curDate.getHours() >= Number(labelName.match(/[tT]([012]?\d)/)[1])) {
+          if (!dateDetails.dateLabel || dateDetails.isDate) {
+            if (dateDetails.isTime) {
               shouldSend = 2;
               break;
             }
           }
         }
-      } else if ((dateregex.test(labelName)
-                  && !/[tT]\d+/.test(labelName))
+      } else if ((dateDetails.isDate && !dateDetails.timeLabel)
                  || labelName == labels[1].getName()) {
         shouldSend = true;
         break;
@@ -253,7 +268,10 @@ function getMatchingDrafts(targetLabel, sendImmediately, returnJSON, hourlyMode)
 function moveHourlySnoozes() {
   var config = getConfig();
   var labels = createOrGetLabels(config);
-  getMatchingDrafts(labels.Hourly.getName(), true, false, true);
+  getMatchingDrafts(labels.Hourly.getName(),
+                    /*sendImmediately=*/true,
+                    /*returnJSON=*/false,
+                    /*hourlyMode=*/true);
 
   var page = labels.Hourly.getThreads(0, 100);
   moveThread(config, labels, 'unindexed', page, labels.Hourly);
@@ -274,7 +292,9 @@ function moveSnoozes() {
   /// targeting specific date
   var dateregex = new RegExp(dateLabel(new Date()));
   GmailApp.getUserLabels().map(function(label) {
-    if (dateregex.test(label.getName())) {
+    var labelName = label.getName();
+    var dateDetails = dateLabelDetails(labelName);
+    if (dateDetails.isDate && !dateDetails.timeLabel) {
       var page = label.getThreads(0, 100);
       moveThread(config, labels, 'unindexed', page, label);
     }
