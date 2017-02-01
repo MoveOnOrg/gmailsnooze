@@ -144,7 +144,7 @@ function dateLabel(date) {
 function dateLabelDetails(labelName, date, tzOffset) {
   date = date || new Date();
   var dateregex = new RegExp(dateLabel(date));
-  var timeregex = /[tT]([012]?\d)/;
+  var timeregex = /[Tt]([012]?\d)/;
   var rv = {
     'dateLabel': /\d{8}/.test(labelName),
     'isDate': dateregex.test(labelName),
@@ -156,7 +156,7 @@ function dateLabelDetails(labelName, date, tzOffset) {
       var scriptTZOffset = date.getTimezoneOffset();
       //adjust to user's perspective of time
       var msTZoffset = ((scriptTZOffset - tzOffset) * 60 * 1000);
-      var adjustedDate = new Date(Number(curDate) + Number(msTZoffset));
+      var adjustedDate = new Date(Number(date) + Number(msTZoffset));
       rv.isTime = (adjustedDate.getHours() >= rv.hour);
     }
   }
@@ -225,7 +225,7 @@ function getMatchingDrafts(targetLabel, sendImmediately, returnJSON, hourlyMode)
         if (labelName == targetLabel) {
           shouldSend = true;
           break;
-        } else if (hourlyMode && /[tT]\d+/.test(labelName)) {
+        } else if (hourlyMode && dateDetails.timeLabel) {
           //should not have an 8-digit date in label OR should be datelabel for today
           Logger.log('matched hourly label: ' + labelName);
           if (!dateDetails.dateLabel || dateDetails.isDate) {
